@@ -27,7 +27,7 @@ Descripcion:
  -----------------V A R I A B L E S   A   I M P L E M T E N T A R--------------
  -----------------------------------------------------------------------------*/
 uint32_t ui32Period;
-uint16_t estado, botonazo, antirrebote;
+uint16_t estado, botonazo, antirrebote,timer0_count;
 uint32_t i = 0;
 /*-----------------------------------------------------------------------------
  ------------ P R O T O T I P O S   D E   F U N C I O N E S -------------------
@@ -43,21 +43,17 @@ void Int_GPIOF(void){
     estado = GPIOIntStatus(GPIO_PORTF_BASE, true);      //lectura de interrupcion
     if (estado==16){
         antirrebote=1;
-        //GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 1);
     }
     else{
         antirrebote=0;
-        //GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 0);
     }
     GPIOIntClear(GPIO_PORTF_BASE,estado);              //se apaga bandera de interrupcion
-
-
 }
 
 void Timer0IntHandler(void)
 {
-    // Clear the timer interrupt
-    //TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);         //se limpia la bandera de interrupcion
+    timer0_count=!timer0_count;
+    TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);         //se limpia la bandera de interrupcion
     //cuenta1++;
 
 }
@@ -68,25 +64,48 @@ void Timer0IntHandler(void)
 int main(void)
  {
     //-------CONFIGURACION DEL RELOJ
-    SysCtlClockSet(SYSCTL_SYSDIV_1 | SYSCTL_USE_OSC | SYSCTL_OSC_MAIN | SYSCTL_XTAL_16MHZ);   //16MHz
+    SysCtlClockSet(SYSCTL_OSC_MAIN|SYSCTL_XTAL_16MHZ|SYSCTL_SYSDIV_5|SYSCTL_USE_PLL);            //reloj externo, cristal de 16mhz, fosc 40mhz, pll como reloj de sistema
     //-------CONFIGURACION DE ENTRADAS Y SALIDAS
-    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);                                             // Se asigna reloj a puerto F
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);                                                // Se asigna reloj a puerto F
     GPIO_PORTF_LOCK_R = GPIO_LOCK_KEY;
     GPIO_PORTF_CR_R = 0x0f;
-    GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3);                         //se define salida de leds en PF[3:1]
-    GPIOPinTypeGPIOInput(GPIO_PORTF_BASE, GPIO_PIN_4);                                       //se define entrada de boton en PF4
-    GPIOPadConfigSet(GPIO_PORTF_BASE, GPIO_PIN_4, GPIO_STRENGTH_2MA,GPIO_PIN_TYPE_STD_WPU);   //boton como weak pull up
+    GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3);               //se define salida de leds en PF[3:1]
+    GPIOPinTypeGPIOInput(GPIO_PORTF_BASE, GPIO_PIN_4);                                          //se define entrada de boton en PF4
+    GPIOPadConfigSet(GPIO_PORTF_BASE, GPIO_PIN_4, GPIO_STRENGTH_2MA,GPIO_PIN_TYPE_STD_WPU);     //boton como weak pull up
+    //-------CONFIGURACION DE TIMER
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);                                                // Se asigna reloj a timer 0
+    TimerConfigure(TIMER0_BASE, TIMER_CFG_PERIODIC);                                            //cuenta periodica
+    TimerLoadSet(TIMER0_BASE, TIMER_A, 19999999);                                               //cuenta de 4m casi cada 1sec
+    TimerEnable(TIMER0_BASE, TIMER_A);                                                          //se habilita el timer de 32bits
     //-------CONFIGURACION DE INTERRUPCIONES
-    IntEnable(INT_GPIOF);                                                           //se habilita la interrupcion en el puerto F
-    GPIOIntEnable(GPIO_PORTF_BASE, GPIO_PIN_4);                        //se especifica que pines tendran la interrupcion
-    GPIOIntTypeSet(GPIO_PORTF_BASE, GPIO_PIN_4, GPIO_FALLING_EDGE);    //interrupcion en flanco de bajada
-    IntMasterEnable();                                                              //se habilitan las interrupciones globales
-
+    //botones
+    IntEnable(INT_GPIOF);                                                                       //se habilita la interrupcion en el puerto F
+    GPIOIntEnable(GPIO_PORTF_BASE, GPIO_PIN_4);                                                 //se especifica que pines tendran la interrupcion
+    GPIOIntTypeSet(GPIO_PORTF_BASE, GPIO_PIN_4, GPIO_FALLING_EDGE);                             //interrupcion en flanco de bajada
+    //timer0
+    IntEnable(INT_TIMER0A);
+    TimerIntEnable(TIMER0_BASE, TIMER_TIMA_TIMEOUT);//se habilita interrupcion del timer0
+    //interrupciones globales
+    IntMasterEnable();                                                                          //se habilitan las interrupciones globales
+    //valor inicial de la variable
+    timer0_count=0;
     /*-----------------------------------------------------------------------------
     -------------------------- M A I N   L O O P ---------------------------------
     -----------------------------------------------------------------------------*/
     while (1)
     {
+        //PARTE POST LAB
+        if(timer0_count==0)
+        {
+            GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 10);
+        }
+        else if (timer0_count==1)
+        {
+            GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 6);
+        }
+
+
+        /*PARTE COMENTADA DE LAB
         if(antirrebote==1 && estado==16)
         {
             antirrebote=0;
@@ -96,7 +115,7 @@ int main(void)
         else{
             GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 0);
         }
-
+        */
     }
 }
 
