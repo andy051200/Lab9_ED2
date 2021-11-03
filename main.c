@@ -22,62 +22,81 @@ Descripcion:
 #include "driverlib/interrupt.h"
 #include "driverlib/gpio.h"
 #include "driverlib/timer.h"
+#include "driverlib/systick.h"
 /*-----------------------------------------------------------------------------
  -----------------V A R I A B L E S   A   I M P L E M T E N T A R--------------
  -----------------------------------------------------------------------------*/
 uint32_t ui32Period;
-
+uint16_t estado, botonazo, antirrebote;
+uint32_t i = 0;
 /*-----------------------------------------------------------------------------
  ------------ P R O T O T I P O S   D E   F U N C I O N E S -------------------
  -----------------------------------------------------------------------------*/
-
+void delay(uint32_t msec);
+void delay1ms(void);
+void semaforo(void);
 /*-----------------------------------------------------------------------------
  --------------------- I N T E R R U P C I O N E S ----------------------------
  -----------------------------------------------------------------------------*/
-//**************************************************************************************************************
-// Handler de la interrupci�n del TIMER 0 - Recordar modificar el archivo tm4c123ght6pm_startup_css.c
-//**************************************************************************************************************
+
+void Int_GPIOF(void){
+    estado = GPIOIntStatus(GPIO_PORTF_BASE, true);      //lectura de interrupcion
+    if (estado==16){
+        antirrebote=1;
+        //GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 1);
+    }
+    else{
+        antirrebote=0;
+        //GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 0);
+    }
+    GPIOIntClear(GPIO_PORTF_BASE,estado);              //se apaga bandera de interrupcion
+
+
+}
+
 void Timer0IntHandler(void)
 {
     // Clear the timer interrupt
-    TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
-    // Read the current state of the GPIO pin and
-    // write back the opposite state
-    if (GPIOPinRead(GPIO_PORTF_BASE, GPIO_PIN_2))
-    {
-        GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, 0);
-    }
-    else
-    {
-        GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_2, 4);
-    }
+    //TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);         //se limpia la bandera de interrupcion
+    //cuenta1++;
+
 }
 
 /*-----------------------------------------------------------------------------
  ------------------------------ S E T   U P -----------------------------------
  -----------------------------------------------------------------------------*/
 int main(void)
-{
+ {
     //-------CONFIGURACION DEL RELOJ
-    SysCtlClockSet(SYSCTL_SYSDIV_5 | SYSCTL_USE_PLL | SYSCTL_XTAL_16MHZ | SYSCTL_OSC_MAIN); // Configuracion del oscilador externo, usando PLL y teniendo una frecuencia de 40MHz
-    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);                                            // Se habilita el reloj para el puerto F
+    SysCtlClockSet(SYSCTL_SYSDIV_1 | SYSCTL_USE_OSC | SYSCTL_OSC_MAIN | SYSCTL_XTAL_16MHZ);   //16MHz
     //-------CONFIGURACION DE ENTRADAS Y SALIDAS
-    GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3);           // Se establecen como salidas el puerto F
-    SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);                                           // Se habilita el reloj para el temporizador
-    //-------CONFIGURACION DE TIMER
-    TimerConfigure(TIMER0_BASE, TIMER_CFG_PERIODIC);                                        // Configuracion del Timer 0 como temporizador per�odico
-    ui32Period = (SysCtlClockGet()) / 2;                                                    // Se calcula el per�odo para el temporizador (1 seg)
-    TimerLoadSet(TIMER0_BASE, TIMER_A, ui32Period - 1);                                     // Establecer el periodo del temporizador
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);                                             // Se asigna reloj a puerto F
+    GPIO_PORTF_LOCK_R = GPIO_LOCK_KEY;
+    GPIO_PORTF_CR_R = 0x0f;
+    GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1 | GPIO_PIN_2 | GPIO_PIN_3);                         //se define salida de leds en PF[3:1]
+    GPIOPinTypeGPIOInput(GPIO_PORTF_BASE, GPIO_PIN_4);                                       //se define entrada de boton en PF4
+    GPIOPadConfigSet(GPIO_PORTF_BASE, GPIO_PIN_4, GPIO_STRENGTH_2MA,GPIO_PIN_TYPE_STD_WPU);   //boton como weak pull up
     //-------CONFIGURACION DE INTERRUPCIONES
-    IntEnable(INT_TIMER0A);                                                                 // Se habilita la interrupciOn por el TIMER0A
-    TimerIntEnable(TIMER0_BASE, TIMER_TIMA_TIMEOUT);                                        // Se establece que exista la interrupcion por Timeout
-    IntMasterEnable();                                                                      // Se habilitan las interrupciones Globales
-    TimerEnable(TIMER0_BASE, TIMER_A);                                                      // Se habilita el Timer
+    IntEnable(INT_GPIOF);                                                           //se habilita la interrupcion en el puerto F
+    GPIOIntEnable(GPIO_PORTF_BASE, GPIO_PIN_4);                        //se especifica que pines tendran la interrupcion
+    GPIOIntTypeSet(GPIO_PORTF_BASE, GPIO_PIN_4, GPIO_FALLING_EDGE);    //interrupcion en flanco de bajada
+    IntMasterEnable();                                                              //se habilitan las interrupciones globales
+
     /*-----------------------------------------------------------------------------
     -------------------------- M A I N   L O O P ---------------------------------
     -----------------------------------------------------------------------------*/
     while (1)
     {
+        if(antirrebote==1 && estado==16)
+        {
+            antirrebote=0;
+            semaforo();
+        }
+
+        else{
+            GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 0);
+        }
+
     }
 }
 
@@ -85,3 +104,52 @@ int main(void)
 /*-----------------------------------------------------------------------------
  ------------------------- F U N C I O N E S ----------------------------------
  -----------------------------------------------------------------------------*/
+void delay(uint32_t msec)
+{
+    for (i = 0; i < msec; i++)
+    {
+        delay1ms();
+    }
+
+}
+
+void delay1ms(void)
+{
+    SysTickDisable();
+    SysTickPeriodSet(16000);
+    SysTickEnable();
+
+    while ((NVIC_ST_CTRL_R & NVIC_ST_CTRL_COUNT) == 0); //Pg. 138
+
+}
+
+void semaforo (void)
+{
+    //verde normal
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 8);     //led en verde
+    delay(5000);
+    //verde titilante
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 8);     //led en verde titilante
+    delay(500);
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 0);     //led en verde titilante
+    delay(500);
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 8);     //led en verde titilante
+    delay(500);
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 0);     //led en verde titilante
+    delay(500);
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 8);     //led en verde titilante
+    delay(500);
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 0);     //led en verde titilante
+    delay(500);
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 8);     //led en verde titilante
+    delay(500);
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 0);     //led en verde titilante
+    delay(500);
+    //amarillo
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 10);     //led en amarillo
+    delay(3000);
+    //rojo
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 2);      //led en rojo
+    delay(5000);
+    return;
+}

@@ -41,7 +41,6 @@ static void IntDefaultHandler(void);
 //
 //*****************************************************************************
 extern void _c_int00(void);
-extern void Timer0IntHandler(void);
 
 //*****************************************************************************
 //
@@ -49,7 +48,8 @@ extern void Timer0IntHandler(void);
 //
 //*****************************************************************************
 extern uint32_t __STACK_TOP;
-
+extern void Timer0IntHandler(void);
+extern void Int_GPIOF(void);
 //*****************************************************************************
 //
 // External declarations for the interrupt handlers used by the application.
@@ -114,7 +114,7 @@ void (* const g_pfnVectors[])(void) =
     IntDefaultHandler,                      // Analog Comparator 2
     IntDefaultHandler,                      // System Control (PLL, OSC, BO)
     IntDefaultHandler,                      // FLASH Control
-    IntDefaultHandler,                      // GPIO Port F
+    Int_GPIOF,                      // GPIO Port F
     IntDefaultHandler,                      // GPIO Port G
     IntDefaultHandler,                      // GPIO Port H
     IntDefaultHandler,                      // UART2 Rx and Tx
